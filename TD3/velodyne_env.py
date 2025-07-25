@@ -3,6 +3,8 @@ import os
 import random
 import subprocess
 import time
+import roslaunch
+
 from os import path
 
 import numpy as np
@@ -129,6 +131,23 @@ class GazeboEnv:
         self.odom = rospy.Subscriber(
             "/r1/odom", Odometry, self.odom_callback, queue_size=1
         )
+
+        self.roslaunch_uuid = roslaunch.rlutil.get_or_generate_uuid(None, False)
+        roslaunch.configure_logging(self.roslaunch_uuid)
+        # gmapping
+        self.gmapping_launch_file = 'assets/gmapping.launch'
+        self.start_gmapping()
+
+    def start_gmapping(self):
+        # if self.gmapping_launch is not None:
+        #     self.gmapping_launch.shutdown() # 先确保旧的已经关闭
+        
+        # 创建一个新的roslaunch进程来启动gmapping.launch
+        self.gmapping_launch = roslaunch.parent.ROSLaunchParent(
+            self.roslaunch_uuid, [self.gmapping_launch_file]
+        )
+        self.gmapping_launch.start()
+        rospy.loginfo("gmapping node started.")
 
     # Read velodyne pointcloud and turn it into distance data, then select the minimum value for each angle
     # range as state representation
@@ -315,6 +334,13 @@ class GazeboEnv:
 
         robot_state = [distance, theta, 0.0, 0.0]
         state = np.append(laser_state, robot_state)
+
+        # reset gmapping
+        if self.gmapping_launch:
+            self.gmapping_launch.shutdown()
+            rospy.loginfo("gmapping node shutdown.")
+        self.start_gmapping()
+
         return state
 
     def change_goal(self):
