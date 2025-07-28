@@ -2,7 +2,9 @@
 <arg name="gui" value="true"/>
 
    <!-- Gazebo  -->
-  <include file="$(find multi_robot_scenario)/launch/empty_world.launch" />
+  <include file="$(find multi_robot_scenario)/launch/empty_world.launch">
+    <arg name="gui" value="$(arg gui)" />
+  </include>
 
   <!-- Robot with diff drive -->
   <include file="$(find multi_robot_scenario)/launch/pioneer3dx.gazebo.launch">

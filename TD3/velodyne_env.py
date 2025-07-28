@@ -385,6 +385,18 @@ class GazeboEnv:
             box_state.pose.orientation.w = 1.0
             self.set_state.publish(box_state)
 
+    def get_robot_location(self):
+        """
+        获取机器人的当前位置 (x, y)。
+        """
+        if self.last_odom is None:
+            rospy.logwarn("Odometry data is not available yet.")
+            return None
+
+        x = self.last_odom.pose.pose.position.x
+        y = self.last_odom.pose.pose.position.y
+        return (x, y)
+    
     def publish_markers(self, action):
         # Publish visual data in Rviz
         markerArray = MarkerArray()
