@@ -18,6 +18,7 @@ from squaternion import Quaternion
 from std_srvs.srv import Empty
 from visualization_msgs.msg import Marker
 from visualization_msgs.msg import MarkerArray
+from agent import Agent
 
 GOAL_REACHED_DIST = 0.3
 COLLISION_DIST = 0.35
@@ -135,8 +136,9 @@ class GazeboEnv:
         self.roslaunch_uuid = roslaunch.rlutil.get_or_generate_uuid(None, False)
         roslaunch.configure_logging(self.roslaunch_uuid)
         # gmapping
-        self.gmapping_launch_file = 'assets/gmapping.launch'
-        self.start_gmapping()
+        # self.gmapping_launch_file = 'assets/gmapping.launch'
+        # self.start_gmapping()
+
 
     def start_gmapping(self):
         # if self.gmapping_launch is not None:
@@ -336,10 +338,10 @@ class GazeboEnv:
         state = np.append(laser_state, robot_state)
 
         # reset gmapping
-        if self.gmapping_launch:
-            self.gmapping_launch.shutdown()
-            rospy.loginfo("gmapping node shutdown.")
-        self.start_gmapping()
+        # if self.gmapping_launch:
+        #     self.gmapping_launch.shutdown()
+        #     rospy.loginfo("gmapping node shutdown.")
+        # self.start_gmapping()
 
         return state
 

@@ -17,6 +17,7 @@ class NodeManager:
         # use quad tree to index nodes in the original graph
         self.nodes_dict = quads.QuadTree((0,0), 1000, 1000)
         self.add_node_to_dict(start, [], None)
+        self.frontier = None # the nearest frontiers
         # use dictionary to index nodes in the rarefied graph
         self.key_node_dict = {}
         # use dictionary to index cluster center node

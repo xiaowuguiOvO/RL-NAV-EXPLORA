@@ -7,6 +7,7 @@ from nav_msgs.msg import OccupancyGrid
 from utils import MapInfo
 from visualization_msgs.msg import Marker, MarkerArray
 from geometry_msgs.msg import Point
+from parameter import *
 
 class ViewpointManager:
     def __init__(self):
@@ -45,15 +46,31 @@ class ViewpointManager:
             rospy.logwarn("Map info is not available yet. Skipping viewpoint generation.")
             return
 
-        # 生成候选节点
+        # 生成候选节点 这里的candidate nodes返回的是坐标，单位米 被规定在网格内
         candidate_nodes, free_connected_map = get_updating_node_coords(robot_location, self.map_info, check_connectivity=False)
+
         # 检测前沿点
-        frontiers = get_frontier_in_map(self.map_info)
+        frontier = get_frontier_in_map(self.map_info)
+
+        # find new frontiers
+        if self.node_manager.frontier is None:
+            new_frontier = frontier
+        else:
+            new_frontier = frontier - self.node_manager.frontier
+            new_out_range= []
+            for frontier in new_frontier:
+                if np.linalg.norm(robot_location - np.array(frontier).reshape(2)) > SENSOR_RANGE + FRONTIER_CELL_SIZE:
+                    new_out_range.append(frontier)
+            for frontier in new_out_range:
+                new_frontier.remove(frontier)
+
+        self.node_manager.frontier = frontier
+
 
         # 计算每个候选节点的效用值
         self.viewpoints = []
         for node in candidate_nodes:
-            utility = self.calculate_utility(node, frontiers)
+            utility = self.calculate_utility(node, frontier)
             # if utility > 0:  # 只保留有探索价值的节点
             self.viewpoints.append((node, utility))
 
@@ -153,6 +170,6 @@ class ViewpointManager:
         """
         更新候选视点并发布最佳视点。
         """
-        self.generate_viewpoints(robot_location)
+        # self.generate_viewpoints(robot_location)
         # self.select_best_viewpoint()
         self.publish_viewpoints_as_markers(self.viewpoints)
