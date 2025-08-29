@@ -50,7 +50,11 @@ class HighLevelEnv(gym.Env):
         return 
 
     def step(self, action): 
-        
+
+        x = self.last_odom.pose.pose.position.x
+        y = self.last_odom.pose.pose.position.y
+        location = np.array([x, y])
+
         self.robot.update_planning_state(self.map_info, location)
             
         return observation, reward, terminated, False, {}
