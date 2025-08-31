@@ -16,3 +16,4 @@ cd ../catkin_ws
 source devel_isolated/setup.zsh
 
 cd ../TD3
+conda activate ctsac
