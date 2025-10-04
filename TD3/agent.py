@@ -12,11 +12,11 @@ from utils import *
 # from parameter import *
 from node_manager import NodeManager
 from visualization_msgs.msg import MarkerArray, Marker
-
+from parameter import *
 class Agent:
-    def __init__(self, policy_net, device='cpu', plot=False):
+    def __init__(self, device='cpu', plot=False):
         self.device = device
-        self.policy_net = policy_net
+        self.policy_net = None
         self.plot = plot
 
         # location and map
@@ -115,24 +115,32 @@ class Agent:
         return updating_map_info
 
     def update_planning_state(self, map_info, location):
+        t1 = time.time()
         self.update_map(map_info)
         self.update_location(location)
+
         self.update_updating_map(self.location)
         self.update_frontiers()
         self.location = self.node_manager.update_graph(self.location,
                                        self.frontier,
                                        self.updating_map_info,
-                                       self.map_info)
+                                       self.map_info) # 花好多时间啊 想想怎么优化一下
+        t2 = time.time()
+        print("update frontiers and graph", t2 - t1)
+        
         t1 = time.time()
         self.node_manager.get_rarefied_graph(self.location, self.map_info)
         t2 = time.time()
         # print("graph rarefaction", t2 - t1)
         # self.node_coords, self.utility, self.guidepost, self.adjacent_matrix, self.current_index, self.neighbor_indices = \
-        #     self.update_observation()
+        #     self.update_padding_observation()
+        # self.key_node_coords, self.key_utility, self.key_guidepost, self.key_adjacent_matrix, self.key_current_index, self.key_neighbor_indices = \
+        #     self.update_key_node_observation()
         t1 = time.time()
-        self.key_node_coords, self.key_utility, self.key_guidepost, self.key_adjacent_matrix, self.key_current_index, self.key_neighbor_indices = \
-            self.update_key_node_observation()
+        self.node_coords, self.utility, self.guidepost, self.adjacent_matrix, self.current_index, self.neighbor_indices = \
+            self.update_observation()
         t2 = time.time()
+        # print("update observation", t2 - t1)
         # print("update key node graph", t2 - t1)
 
     def update_observation(self):
@@ -192,6 +200,64 @@ class Agent:
 
         return all_key_node_coords, utility, guidepost, adjacent_matrix, current_index, neighbor_indices
 
+    
+    def get_pandding_observation(self):
+        node_coords = self.node_coords
+        node_utility = self.utility.reshape(-1, 1)
+        node_guidepost = self.guidepost.reshape(-1, 1)
+        current_index = self.current_index
+        edge_mask = self.adjacent_matrix
+        current_edge = self.neighbor_indices
+        n_node = node_coords.shape[0]
+
+        current_node_coords = node_coords[self.current_index]
+        node_coords = np.concatenate((node_coords[:, 0].reshape(-1, 1) - current_node_coords[0],
+                                            node_coords[:, 1].reshape(-1, 1) - current_node_coords[1]),
+                                           axis=-1) / UPDATING_MAP_SIZE
+        node_utility = node_utility / (SENSOR_RANGE * 3.14 // FRONTIER_CELL_SIZE)
+        node_inputs = np.concatenate((node_coords, node_utility, node_guidepost), axis=1)
+        node_inputs = torch.FloatTensor(node_inputs).unsqueeze(0).to(self.device)
+
+        assert node_coords.shape[0] < NODE_PADDING_SIZE, print(node_coords.shape[0], NODE_PADDING_SIZE)
+        padding = torch.nn.ZeroPad2d((0, 0, 0, NODE_PADDING_SIZE - n_node))
+        node_inputs = padding(node_inputs)
+
+        node_padding_mask = torch.zeros((1, 1, n_node), dtype=torch.int16).to(self.device)
+        node_padding = torch.ones((1, 1, NODE_PADDING_SIZE - n_node), dtype=torch.int16).to(
+            self.device)
+        node_padding_mask = torch.cat((node_padding_mask, node_padding), dim=-1)
+
+        current_index = torch.tensor([current_index]).reshape(1, 1, 1).to(self.device)
+
+        edge_mask = torch.tensor(edge_mask).unsqueeze(0).to(self.device)
+
+        padding = torch.nn.ConstantPad2d(
+            (0, NODE_PADDING_SIZE - n_node, 0, NODE_PADDING_SIZE - n_node), 1)
+        edge_mask = padding(edge_mask)
+
+        current_in_edge = np.argwhere(current_edge == self.current_index)[0][0]
+        current_edge = torch.tensor(current_edge).unsqueeze(0)
+        k_size = current_edge.size()[-1]
+        padding = torch.nn.ConstantPad1d((0, K_SIZE - k_size), 0)
+        current_edge = padding(current_edge)
+        current_edge = current_edge.unsqueeze(-1)
+
+        edge_padding_mask = torch.zeros((1, 1, k_size), dtype=torch.int16).to(self.device)
+        edge_padding_mask[0, 0, current_in_edge] = 1
+        padding = torch.nn.ConstantPad1d((0, K_SIZE - k_size), 1)
+        edge_padding_mask = padding(edge_padding_mask)
+        
+        observation = {
+            'node_inputs': node_inputs,
+            'node_padding_mask': node_padding_mask,
+            'edge_mask': edge_mask,
+            'current_index': current_index,
+            'next_edge': current_edge,
+            'edge_padding_mask': edge_padding_mask
+        }
+        return observation
+
+    
     def get_observation(self, robot_location):
 
         node_coords = deepcopy(self.key_node_coords)
@@ -222,8 +288,16 @@ class Agent:
 
         edge_padding_mask = torch.zeros((1, 1, k_size), dtype=torch.int16).to(self.device)
         edge_padding_mask[0, 0, current_in_edge] = 1
-
-        return [node_inputs, None, edge_mask, current_index, current_edge, edge_padding_mask]
+        observation = {
+            'node_inputs': node_inputs,
+            'edge_mask': edge_mask,
+            'current_index': current_index,
+            'next_edge': current_edge,
+            'edge_padding_mask': edge_padding_mask
+        }
+        print(node_inputs.shape, edge_mask.shape, current_index.shape, current_edge.shape, edge_padding_mask.shape)
+        return observation
+        # return [node_inputs, None, edge_mask, current_index, current_edge, edge_padding_mask]
 
     def get_next_observation(self, next_node_index, observation):
         node_inputs, _, edge_mask, curren_index, _, _ = observation
@@ -236,7 +310,17 @@ class Agent:
         edge_padding_mask = torch.zeros((1, 1, k_size), dtype=torch.int16).to(self.device)
         edge_padding_mask[0, 0, next_in_edge] = 1
         edge_padding_mask[0, 0, curren_in_edge] = 1
-        return node_inputs, None, edge_mask, next_node_index, next_edge, edge_padding_mask
+        
+        observation = {
+            'node_inputs': node_inputs,
+            'edge_mask': edge_mask,
+            'current_index': next_node_index,
+            'next_edge': next_edge,
+            'edge_padding_mask': edge_padding_mask
+        }
+        print(node_inputs.shape, edge_mask.shape, next_node_index.shape, next_edge.shape, edge_padding_mask.shape)
+        return observation
+        # return [node_inputs, None, edge_mask, next_node_index, next_edge, edge_padding_mask]
 
     def select_next_waypoint(self, observation, greedy=True):
         _, _, _, _, current_edge, _ = observation

@@ -97,8 +97,8 @@ class NodeManager:
                     node.update_node_observable_frontiers(frontiers, updating_map_info, map_info, global_frontiers)
             all_node_list.append(node)
         t2 = time.time()
-        # print("update nodes", t2 - t1)
-
+        print("update nodes", t2 - t1)
+        print("len", all_node_list.__len__())
         for node in all_node_list:
             updated_edges = set()
             if node.need_update_neighbor and np.linalg.norm(node.coords - robot_location) < (
@@ -109,7 +109,7 @@ class NodeManager:
             self.updated_edges = self.updated_edges.union(updated_edges)
 
         t3 = time.time()
-        # print("update edges", t3 - t2)
+        print("update edges", t3 - t2)
 
         # remove nodes unconnected to the origin
         self.remove_unconnected_nodes(self.start)

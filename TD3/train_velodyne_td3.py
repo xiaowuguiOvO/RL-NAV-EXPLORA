@@ -317,7 +317,7 @@ while timestep < max_timesteps:
 
     # add some exploration noise
     if expl_noise > expl_min:
-        expl_noise = expl_noise - ((1 - expl_min) / expl_decay_steps)
+        expl_noise = expl_noise - ( (1 - expl_min) / expl_decay_steps)
 
     action = network.get_action(np.array(state))
     action = (action + np.random.normal(0, expl_noise, size=action_dim)).clip(

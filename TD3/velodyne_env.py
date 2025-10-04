@@ -136,8 +136,8 @@ class GazeboEnv:
         self.roslaunch_uuid = roslaunch.rlutil.get_or_generate_uuid(None, False)
         roslaunch.configure_logging(self.roslaunch_uuid)
         # gmapping
-        # self.gmapping_launch_file = 'assets/gmapping.launch'
-        # self.start_gmapping()
+        self.gmapping_launch_file = 'assets/gmapping.launch'
+        self.start_gmapping()
 
 
     def start_gmapping(self):
@@ -297,13 +297,13 @@ class GazeboEnv:
         except (rospy.ServiceException) as e:
             print("/gazebo/unpause_physics service call failed")
 
-        time.sleep(TIME_DELTA)
+        # time.sleep(TIME_DELTA)
 
-        rospy.wait_for_service("/gazebo/pause_physics")
-        try:
-            self.pause()
-        except (rospy.ServiceException) as e:
-            print("/gazebo/pause_physics service call failed")
+        # rospy.wait_for_service("/gazebo/pause_physics")
+        # try:
+        #     self.pause()
+        # except (rospy.ServiceException) as e:
+        #     print("/gazebo/pause_physics service call failed")
         v_state = []
         v_state[:] = self.velodyne_data[:]
         laser_state = [v_state]
@@ -338,10 +338,10 @@ class GazeboEnv:
         state = np.append(laser_state, robot_state)
 
         # reset gmapping
-        # if self.gmapping_launch:
-        #     self.gmapping_launch.shutdown()
-        #     rospy.loginfo("gmapping node shutdown.")
-        # self.start_gmapping()
+        if self.gmapping_launch:
+            self.gmapping_launch.shutdown()
+            rospy.loginfo("gmapping node shutdown.")
+        self.start_gmapping()
 
         return state
 

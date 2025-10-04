@@ -25,3 +25,7 @@ CLUSTER_RANGE = 10 # meter, frontiers will be clustered based on this range
 AVOID_OSCILLATION = True # if the planner outputs back and forth waypoints, move to one of them
 ENABLE_SAVE_MODE = False # if the planner outputs waypoints in loop, move to the nearest frontier
 ENABLE_DSTARLITE = False # Use D*-lite for graph rarefaction instead of A*
+
+SENSOR_RANGE = 16  # meter
+UTILITY_RANGE = 0.8 * SENSOR_RANGE  # consider frontiers within this range as observable
+NODE_PADDING_SIZE = 360

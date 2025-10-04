@@ -8,14 +8,61 @@ from utils import *
 import rospy
 from nav_msgs.msg import OccupancyGrid
 from nav_msgs.msg import Odometry
+from copy import deepcopy
+from parameter import *
+from velodyne_env import GazeboEnv
+import time
 
 class HighLevelEnv(gym.Env):
-    def __init__(self, gazebo_sim_instance, low_level_policy_path):
+    def __init__(self):
         super().__init__()
-        self.gazebo = gazebo_sim_instance
-        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(4,), dtype=np.float32) # (x, y, goal_x, goal_y)
-        self.action_space = spaces.Box(low=-5, high=5, shape=(2,), dtype=np.float32)
+        
+        self.observation_space = spaces.Dict({
+            # SHAPE: (填充后的节点数, 特征维度)
+            'node_inputs': spaces.Box(
+                low=-np.inf, high=np.inf,
+                shape=(NODE_PADDING_SIZE, NODE_INPUT_DIM),
+                dtype=np.float32
+            ),
+            
+            # SHAPE: (填充后的节点数,) -> 对应每个节点的掩码 (mask)
+            'node_padding_mask': spaces.Box(
+                low=0, high=1,
+                shape=(NODE_PADDING_SIZE,),
+                dtype=np.uint8 # 对0/1掩码建议使用uint8类型
+            ),
+            
+            # SHAPE: (填充后的节点数, 填充后的节点数)
+            'edge_mask': spaces.Box(
+                low=0, high=1,
+                shape=(NODE_PADDING_SIZE, NODE_PADDING_SIZE),
+                dtype=np.float32
+            ),
+            
+            # VALUE: 一个从 0 到 NODE_PADDING_SIZE-1 的整数
+            'current_index': spaces.Discrete(NODE_PADDING_SIZE),
 
+            # SHAPE: (填充后的邻居数,)
+            # 注意：键名是 'next_edge' 以匹配你的函数返回值
+            'next_edge': spaces.Box(
+                low=0, high=NODE_PADDING_SIZE,
+                shape=(K_SIZE,),
+                dtype=np.float32 
+            ),
+            
+            # SHAPE: (填充后的邻居数,) -> 对应每个邻居的掩码
+            'edge_padding_mask': spaces.Box(
+                low=0, high=1,
+                shape=(K_SIZE,),
+                dtype=np.uint8
+            )
+        })
+
+
+        
+        self.action_space = spaces.Discrete(K_SIZE) 
+        self.reward_range = (-float('inf'), float('inf'))
+        
         self.map_info = None
         self.last_odom = None
         
@@ -24,8 +71,10 @@ class HighLevelEnv(gym.Env):
             "/r1/odom", Odometry, self.odom_callback, queue_size=1
         )
 
-        self.robot = Agent()
+        self.robot = Agent(device='cpu', plot=False)
 
+        self.env = GazeboEnv("test_simulator.launch", 20)
+        print('init high level env done')
 
     def map_callback(self, msg):
         """
@@ -46,16 +95,73 @@ class HighLevelEnv(gym.Env):
 
 
     def reset(self, seed=None, options=None):
+        self.env.reset()
+        robot_location = np.array([0, 0])
+        while self.map_info is None and not rospy.is_shutdown():
+            rospy.loginfo("Waiting for map data to be received...")
+            rospy.sleep(0.5) # 等待0.5秒，避免CPU空转
+        
+        self.robot.update_planning_state(self.map_info, robot_location)
+        self.robot.update_key_node_observation()
+        observation = self.robot.get_pandding_observation()
+        
+        return observation, {}
 
-        return 
+    def calculate_reward(self):
+        reward = 0
+        return reward
 
     def step(self, action): 
 
         x = self.last_odom.pose.pose.position.x
         y = self.last_odom.pose.pose.position.y
         location = np.array([x, y])
+        robot_node_location = location
+        if self.robot.node_manager.nodes_dict.__len__() == 0:
+            robot_node_location = [0, 0]
+        else:
+            nearest_node = self.robot.node_manager.nodes_dict.nearest_neighbors(location.tolist(), 1)[0]
+            node_coords = nearest_node.data.coords
+            robot_node_location = node_coords
 
-        self.robot.update_planning_state(self.map_info, location)
-            
+        t1 = time.time()
+        self.robot.update_planning_state(self.map_info, robot_node_location)
+        t2 = time.time()
+        # print("update planning state", t2 - t1)
+        # key_node_coords, utility, guidepost, adjacent_matrix, neighbor_indices = self.robot.update_key_node_observation()
+        # observation = self.robot.get_next_observation(robot_node_location)
+        t1 = time.time()
+        observation = self.robot.get_pandding_observation()
+        t2 = time.time()
+        # print("get observation time", t2 - t1)
+        # reward
+        reward = self.calculate_reward()
+        
+        # terminated
+        terminated = False
+        
+        # self.robot.publish_node_markers()
+        
+        action = [0.5, 0]
+        self.env.step(action)
+        
+        
         return observation, reward, terminated, False, {}
 
+
+if __name__ == "__main__":
+    rospy.init_node("high_level_env", anonymous=True)
+    env = HighLevelEnv()
+    env = gym.wrappers.FlattenObservation(env)
+    env.reward_range = env.env.reward_range
+    
+    model = SAC(
+        policy="MlpPolicy",
+        env=env,
+        learning_rate=1e-4,
+        buffer_size=1_000_000,
+        verbose=1
+    )
+    
+    print('start training')
+    model.learn(total_timesteps=1000) # 先只训练1000步来测试
