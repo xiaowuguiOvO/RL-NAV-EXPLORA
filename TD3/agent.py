@@ -111,6 +111,7 @@ class Agent:
                        updating_map_origin_in_global_map[0]:updating_map_top_in_global_map[0] + 1]
 
         updating_map_info = MapInfo(updating_map, updating_map_origin_x, updating_map_origin_y, self.cell_size)
+        # print(f"--- DEBUG: 切割出的局部地图，尺寸: {updating_map.shape} ---")
 
         return updating_map_info
 
@@ -134,11 +135,11 @@ class Agent:
         # print("graph rarefaction", t2 - t1)
         # self.node_coords, self.utility, self.guidepost, self.adjacent_matrix, self.current_index, self.neighbor_indices = \
         #     self.update_padding_observation()
-        # self.key_node_coords, self.key_utility, self.key_guidepost, self.key_adjacent_matrix, self.key_current_index, self.key_neighbor_indices = \
-        #     self.update_key_node_observation()
+        self.key_node_coords, self.key_utility, self.key_guidepost, self.key_adjacent_matrix, self.key_current_index, self.key_neighbor_indices = \
+            self.update_key_node_observation()
         t1 = time.time()
-        self.node_coords, self.utility, self.guidepost, self.adjacent_matrix, self.current_index, self.neighbor_indices = \
-            self.update_observation()
+        # self.node_coords, self.utility, self.guidepost, self.adjacent_matrix, self.current_index, self.neighbor_indices = \
+        #     self.update_observation()
         t2 = time.time()
         # print("update observation", t2 - t1)
         # print("update key node graph", t2 - t1)
@@ -202,15 +203,15 @@ class Agent:
 
     
     def get_pandding_observation(self):
-        node_coords = self.node_coords
-        node_utility = self.utility.reshape(-1, 1)
-        node_guidepost = self.guidepost.reshape(-1, 1)
-        current_index = self.current_index
-        edge_mask = self.adjacent_matrix
-        current_edge = self.neighbor_indices
+        node_coords = self.key_node_coords
+        node_utility = self.key_utility.reshape(-1, 1)
+        node_guidepost = self.key_guidepost.reshape(-1, 1)
+        current_index = self.key_current_index
+        edge_mask = self.key_adjacent_matrix
+        current_edge = self.key_neighbor_indices
         n_node = node_coords.shape[0]
 
-        current_node_coords = node_coords[self.current_index]
+        current_node_coords = node_coords[self.key_current_index]
         node_coords = np.concatenate((node_coords[:, 0].reshape(-1, 1) - current_node_coords[0],
                                             node_coords[:, 1].reshape(-1, 1) - current_node_coords[1]),
                                            axis=-1) / UPDATING_MAP_SIZE
@@ -235,7 +236,7 @@ class Agent:
             (0, NODE_PADDING_SIZE - n_node, 0, NODE_PADDING_SIZE - n_node), 1)
         edge_mask = padding(edge_mask)
 
-        current_in_edge = np.argwhere(current_edge == self.current_index)[0][0]
+        current_in_edge = np.argwhere(current_edge == self.key_current_index)[0][0]
         current_edge = torch.tensor(current_edge).unsqueeze(0)
         k_size = current_edge.size()[-1]
         padding = torch.nn.ConstantPad1d((0, K_SIZE - k_size), 0)
@@ -408,9 +409,10 @@ class Agent:
 
         # --- 开始修改 ---
         # 1. 找到 utility 的最大值和最小值
-        if self.key_utility.size == 0:  # 检查数组的元素数量是否为 0
+        # if self.utility.size == 0:  # 检查数组的元素数量是否为 0
+        if self.key_utility.size == 0:
             return
-            
+
         min_utility = min(self.key_utility)
         max_utility = max(self.key_utility)
         utility_range = max_utility - min_utility
@@ -450,3 +452,26 @@ class Agent:
             marker_array.markers.append(marker)
 
         self.node_publisher.publish(marker_array)
+        
+    def reset(self):
+        """
+        重置 Agent 的所有内部状态，为新的 episode 做准备。
+        """
+        rospy.loginfo("Resetting Agent state (clearing map and nodes)...")
+        
+        # 重新初始化所有在 episode 之间需要清空的状态变量
+        self.location = None
+        self.map_info = None
+        self.updating_map_info = None
+
+        self.frontier = set()
+
+        # 这是最关键的一步：创建一个全新的 NodeManager，丢弃旧的节点和图
+        self.node_manager = NodeManager()
+
+        # 将所有图相关的变量也重置为 None
+        self.node_coords, self.utility, self.guidepost = None, None, None
+        self.current_index, self.adjacent_matrix, self.neighbor_indices = None, None, None
+        
+        self.key_node_coords, self.key_utility, self.key_guidepost = None, None, None
+        self.key_current_index, self.key_adjacent_matrix, self.key_neighbor_indices = None, None, None

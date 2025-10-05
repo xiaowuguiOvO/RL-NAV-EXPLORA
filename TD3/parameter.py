@@ -1,5 +1,5 @@
 CELL_SIZE = 0.4  # meter
-NODE_RESOLUTION = 1 # meter
+NODE_RESOLUTION = 2 # meter
 
 FREE = 0
 OCCUPIED = 100

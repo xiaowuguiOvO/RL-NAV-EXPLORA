@@ -19,6 +19,7 @@ from std_srvs.srv import Empty
 from visualization_msgs.msg import Marker
 from visualization_msgs.msg import MarkerArray
 from agent import Agent
+import rosnode 
 
 GOAL_REACHED_DIST = 0.3
 COLLISION_DIST = 0.35
@@ -103,7 +104,6 @@ class GazeboEnv:
 
         print("Roscore launched!")
 
-        # Launch the simulation with the given launchfile name
         rospy.init_node("gym", anonymous=True)
         if launchfile.startswith("/"):
             fullpath = launchfile
@@ -115,7 +115,6 @@ class GazeboEnv:
         subprocess.Popen(["roslaunch", "-p", port, fullpath])
         print("Gazebo launched!")
 
-        # Set up the ROS publishers and subscribers
         self.vel_pub = rospy.Publisher("/r1/cmd_vel", Twist, queue_size=1)
         self.set_state = rospy.Publisher(
             "gazebo/set_model_state", ModelState, queue_size=10
@@ -133,23 +132,39 @@ class GazeboEnv:
             "/r1/odom", Odometry, self.odom_callback, queue_size=1
         )
 
-        self.roslaunch_uuid = roslaunch.rlutil.get_or_generate_uuid(None, False)
-        roslaunch.configure_logging(self.roslaunch_uuid)
-        # gmapping
-        self.gmapping_launch_file = 'assets/gmapping.launch'
+        # --- 以下是修改区域 ---
+
+        # --- 删除 ---: 不再需要 roslaunch API 的 uuid 和 logging
+        # self.roslaunch_uuid = roslaunch.rlutil.get_or_generate_uuid(None, False)
+        # roslaunch.configure_logging(self.roslaunch_uuid)
+        
+        # +++ 新增 +++: 初始化一个变量来持有 gmapping 进程
+        self.gmapping_process = None
+        
+        # 找到 gmapping.launch 文件的完整路径
+        # (假设它和你的 GazeboEnv.py 在同一个目录下的 assets/ 文件夹里)
+        gmapping_launch_path_str = 'assets/gmapping.launch'
+        self.gmapping_launch_file = os.path.join(os.path.dirname(__file__), gmapping_launch_path_str)
+        if not path.exists(self.gmapping_launch_file):
+            raise IOError("File " + self.gmapping_launch_file + " does not exist")
+
         self.start_gmapping()
 
-
     def start_gmapping(self):
-        # if self.gmapping_launch is not None:
-        #     self.gmapping_launch.shutdown() # 先确保旧的已经关闭
-        
-        # 创建一个新的roslaunch进程来启动gmapping.launch
-        self.gmapping_launch = roslaunch.parent.ROSLaunchParent(
-            self.roslaunch_uuid, [self.gmapping_launch_file]
+        """
+        使用 subprocess 模块启动一个新的 gmapping roslaunch 进程。
+        这个函数会取代原来使用 roslaunch API 的版本。
+        """
+        rospy.loginfo("Starting new gmapping process...")
+
+        # 使用 subprocess.Popen 来执行 "roslaunch <your_launch_file>" 命令。
+        # 这会开启一个新的 gmapping 进程，并将该进程的对象
+        # 存入 self.gmapping_process 变量中，以便之后可以在 reset 函数中终止它。
+        self.gmapping_process = subprocess.Popen(
+            ["roslaunch", self.gmapping_launch_file]
         )
-        self.gmapping_launch.start()
-        rospy.loginfo("gmapping node started.")
+        
+        rospy.loginfo("New gmapping process has been launched.")
 
     # Read velodyne pointcloud and turn it into distance data, then select the minimum value for each angle
     # range as state representation
@@ -251,6 +266,7 @@ class GazeboEnv:
         state = np.append(laser_state, robot_state)
         reward = self.get_reward(target, collision, action, min_laser)
         return state, reward, done, target
+    
 
     def reset(self):
 
@@ -275,7 +291,6 @@ class GazeboEnv:
             position_ok = check_pos(x, y)
         object_state.pose.position.x = x
         object_state.pose.position.y = y
-        # object_state.pose.position.z = 0.
         object_state.pose.orientation.x = quaternion.x
         object_state.pose.orientation.y = quaternion.y
         object_state.pose.orientation.z = quaternion.z
@@ -285,9 +300,7 @@ class GazeboEnv:
         self.odom_x = object_state.pose.position.x
         self.odom_y = object_state.pose.position.y
 
-        # set a random goal in empty space in environment
         self.change_goal()
-        # randomly scatter boxes in the environment
         self.random_box()
         self.publish_markers([0.0, 0.0])
 
@@ -297,13 +310,6 @@ class GazeboEnv:
         except (rospy.ServiceException) as e:
             print("/gazebo/unpause_physics service call failed")
 
-        # time.sleep(TIME_DELTA)
-
-        # rospy.wait_for_service("/gazebo/pause_physics")
-        # try:
-        #     self.pause()
-        # except (rospy.ServiceException) as e:
-        #     print("/gazebo/pause_physics service call failed")
         v_state = []
         v_state[:] = self.velodyne_data[:]
         laser_state = [v_state]
@@ -337,10 +343,18 @@ class GazeboEnv:
         robot_state = [distance, theta, 0.0, 0.0]
         state = np.append(laser_state, robot_state)
 
+        # --- 以下是唯一的修改区域 ---
         # reset gmapping
-        if self.gmapping_launch:
-            self.gmapping_launch.shutdown()
-            rospy.loginfo("gmapping node shutdown.")
+        if self.gmapping_process:
+            rospy.loginfo("Terminating gmapping process...")
+            self.gmapping_process.terminate() # 1. 发出终止信号
+            
+            # 2. +++ 新增: 强制等待3秒 +++
+            #    这给了旧进程足够的时间在操作系统层面彻底关闭
+            rospy.loginfo("Waiting for gmapping to shut down completely...")
+            time.sleep(2) 
+            
+        # 3. 等待之后，再启动新的
         self.start_gmapping()
 
         return state

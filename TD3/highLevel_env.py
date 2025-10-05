@@ -89,6 +89,7 @@ class HighLevelEnv(gym.Env):
         # print(map_origin_x, map_origin_y, cell_size)
         # 初始化或更新 MapInfo 对象
         self.map_info = MapInfo(map_data, map_origin_x, map_origin_y, cell_size)
+        # print(f"--- DEBUG: 收到新全局地图，尺寸: {map_data.shape} ---") 
 
     def odom_callback(self, od_data):
         self.last_odom = od_data
@@ -96,6 +97,7 @@ class HighLevelEnv(gym.Env):
 
     def reset(self, seed=None, options=None):
         self.env.reset()
+        self.robot.reset()
         robot_location = np.array([0, 0])
         while self.map_info is None and not rospy.is_shutdown():
             rospy.loginfo("Waiting for map data to be received...")
@@ -140,7 +142,7 @@ class HighLevelEnv(gym.Env):
         # terminated
         terminated = False
         
-        # self.robot.publish_node_markers()
+        self.robot.publish_node_markers()
         
         action = [0.5, 0]
         self.env.step(action)
@@ -150,7 +152,7 @@ class HighLevelEnv(gym.Env):
 
 
 if __name__ == "__main__":
-    rospy.init_node("high_level_env", anonymous=True)
+    # rospy.init_node("high_level_env", anonymous=True)
     env = HighLevelEnv()
     env = gym.wrappers.FlattenObservation(env)
     env.reward_range = env.env.reward_range

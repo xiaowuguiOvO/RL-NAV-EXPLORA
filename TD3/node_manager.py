@@ -70,9 +70,12 @@ class NodeManager:
 
     def update_graph(self, robot_location, frontiers, updating_map_info, map_info):
         # only get the nodes in the updating map
-        node_coords, _ = get_updating_node_coords(robot_location, updating_map_info)
-
+        node_coords, _ = get_updating_node_coords(robot_location, updating_map_info, check_connectivity=False)
+        print(len(node_coords), "nodes in the updating map") #问题就出在这里
+        
         global_frontiers = get_frontier_in_map(map_info)
+        nodes_before = self.nodes_dict.__len__()
+        # print(f"更新前，总节点数: {nodes_before}")
 
         # update nodes
         t1 = time.time()
@@ -96,9 +99,13 @@ class NodeManager:
                 else:
                     node.update_node_observable_frontiers(frontiers, updating_map_info, map_info, global_frontiers)
             all_node_list.append(node)
+            
         t2 = time.time()
-        print("update nodes", t2 - t1)
-        print("len", all_node_list.__len__())
+        
+        node_after = self.nodes_dict.__len__()
+        # print(f"更新后，总节点数: {node_after}, 新增节点数: {node_after - nodes_before}")
+        
+        
         for node in all_node_list:
             updated_edges = set()
             if node.need_update_neighbor and np.linalg.norm(node.coords - robot_location) < (
@@ -109,7 +116,7 @@ class NodeManager:
             self.updated_edges = self.updated_edges.union(updated_edges)
 
         t3 = time.time()
-        print("update edges", t3 - t2)
+        # print("update edges", t3 - t2)
 
         # remove nodes unconnected to the origin
         self.remove_unconnected_nodes(self.start)

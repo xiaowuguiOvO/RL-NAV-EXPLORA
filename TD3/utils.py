@@ -79,13 +79,17 @@ def get_free_and_connected_map(location, map_info):
 
 
 def get_updating_node_coords(location, updating_map_info, check_connectivity=True):
+    # print(location)
+    
+    # set the range of node sampling
     x_min = updating_map_info.map_origin_x
     y_min = updating_map_info.map_origin_y
     x_max = updating_map_info.map_origin_x + (updating_map_info.map.shape[1] - 1) * parameter.CELL_SIZE
     y_max = updating_map_info.map_origin_y + (updating_map_info.map.shape[0] - 1) * parameter.CELL_SIZE
 
-    # print(x_min, y_min, x_max, y_max)
-
+    # print('x_min, y_min, x_max, y_max:', x_min, y_min, x_max, y_max)
+    # print('location:', location)
+    # converte to multiples of NODE_RESOLUTION
     if x_min % parameter.NODE_RESOLUTION != 0:
         x_min = (x_min // parameter.NODE_RESOLUTION + 1) * parameter.NODE_RESOLUTION
     if x_max % parameter.NODE_RESOLUTION != 0:
@@ -95,6 +99,7 @@ def get_updating_node_coords(location, updating_map_info, check_connectivity=Tru
     if y_max % parameter.NODE_RESOLUTION != 0:
         y_max = y_max // parameter.NODE_RESOLUTION * parameter.NODE_RESOLUTION
 
+    # get all the possible node coordinates in the range
     x_coords = np.arange(x_min, x_max + 1e-5, parameter.NODE_RESOLUTION)
     y_coords = np.arange(y_min, y_max + 1e-5, parameter.NODE_RESOLUTION)
     t1, t2 = np.meshgrid(x_coords, y_coords)
@@ -117,6 +122,7 @@ def get_updating_node_coords(location, updating_map_info, check_connectivity=Tru
     else:
         free_connected_map = get_free_and_connected_map(location, updating_map_info)
         free_connected_map = np.array(free_connected_map)
+        print(f"--- DEBUG: 过滤掩码中，自由像素数量: {np.sum(free_connected_map)} / 总像素: {free_connected_map.size} ---")
 
         indices = []
         nodes_cells = get_cell_position_from_coords(nodes, updating_map_info).reshape(-1, 2)
@@ -129,6 +135,7 @@ def get_updating_node_coords(location, updating_map_info, check_connectivity=Tru
         indices = np.array(indices)
         nodes = nodes[indices].reshape(-1, 2)
 
+    # print(nodes)
     return nodes, free_connected_map
 
 
