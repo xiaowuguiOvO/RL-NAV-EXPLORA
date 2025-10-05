@@ -143,8 +143,9 @@ class HighLevelEnv(gym.Env):
         terminated = False
         
         self.robot.publish_node_markers()
-        
-        action = [0.5, 0]
+        self.robot.publish_frontier_markers()
+
+        action = [0.1, 1.0]
         self.env.step(action)
         
         

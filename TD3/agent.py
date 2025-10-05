@@ -47,6 +47,7 @@ class Agent:
         self.key_current_index, self.key_adjacent_matrix, self.key_neighbor_indices = None, None, None
 
         self.node_publisher = rospy.Publisher('/all_nodes', MarkerArray, queue_size=10)
+        self.frontier_publisher = rospy.Publisher('/frontier_markers', MarkerArray, queue_size=10)
         
     def update_map(self, map_info):
         self.map_info = map_info
@@ -440,19 +441,59 @@ class Agent:
             
             # --- 开始修改 ---
             # 2. 计算当前 utility 的归一化值 (0.0 到 1.0 之间)
-            normalized_utility = (self.key_utility[i] - min_utility) / utility_range
+            v = (self.key_utility[i] - min_utility) / utility_range
             
-            # 3. 使用归一化后的值来设置颜色
+            # 3. 使用归一化后的值来设置颜色 (灰色到橙色)
             marker.color.a = 1.0
-            marker.color.r = normalized_utility  # 红色分量现在会动态变化
-            marker.color.g = 0.5
-            marker.color.b = 1.0 - normalized_utility # 蓝色分量也会相应变化
+            # Interpolate from gray (0.5, 0.5, 0.5) to orange (1.0, 0.65, 0.0)
+            marker.color.r = (1.0 - v) * 0.5 + v * 1.0
+            marker.color.g = (1.0 - v) * 0.5 + v * 0.65
+            marker.color.b = (1.0 - v) * 0.5 + v * 0.0
             # --- 结束修改 ---
             
             marker_array.markers.append(marker)
 
         self.node_publisher.publish(marker_array)
         
+    def publish_frontier_markers(self):
+        """
+        在 RViz 中发布所有边界点的 MarkerArray。
+        """
+        marker_array = MarkerArray()
+        
+        # It's good practice to clear old markers
+        delete_marker = Marker()
+        delete_marker.header.frame_id = "map"
+        delete_marker.action = Marker.DELETEALL
+        marker_array.markers.append(delete_marker)
+        self.frontier_publisher.publish(marker_array) # Publish deletion first
+        
+        marker_array.markers = [] # Reset marker list for adding new ones
+
+        for i, coords in enumerate(self.frontier):
+            marker = Marker()
+            marker.header.frame_id = "map"
+            marker.header.stamp = rospy.Time(0)
+            marker.ns = "frontiers"
+            marker.id = i
+            marker.type = Marker.CUBE
+            marker.action = Marker.ADD
+            marker.pose.position.x = coords[0]
+            marker.pose.position.y = coords[1]
+            marker.pose.position.z = 0
+            marker.pose.orientation.w = 1.0
+            marker.scale.x = self.cell_size
+            marker.scale.y = self.cell_size
+            marker.scale.z = self.cell_size
+            marker.color.a = 1.0
+            marker.color.r = 0.0
+            marker.color.g = 1.0
+            marker.color.b = 0.0
+            marker_array.markers.append(marker)
+
+        if len(marker_array.markers) > 0:
+            self.frontier_publisher.publish(marker_array)
+
     def reset(self):
         """
         重置 Agent 的所有内部状态，为新的 episode 做准备。

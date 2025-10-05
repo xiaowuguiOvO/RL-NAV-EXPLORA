@@ -1,4 +1,4 @@
-CELL_SIZE = 0.4  # meter
+CELL_SIZE = 0.2  # meter
 NODE_RESOLUTION = 2 # meter
 
 FREE = 0
